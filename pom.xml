@@ -11,6 +11,7 @@
     <name>Homeworks</name>
     <description>Homeworks for the OTUS's course "Architecture and design patterns".</description>
     <modules>
+        <module>HW01</module>
     </modules>
     <developers>
         <developer>
