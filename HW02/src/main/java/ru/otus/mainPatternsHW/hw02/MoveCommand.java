@@ -9,7 +9,13 @@ public class MoveCommand implements Command {
 
     @Override
     public void execute() {
-        movable.setPosition(Vector.sum(movable.getPosition(), movable.getVelocity()));
+        try {
+            movable.setPosition(Vector.sum(movable.getPosition(), movable.getVelocity()));
+        } catch (Exception E) {
+            throw new RuntimeException("Can't set new position:\n" + E.getMessage());
+        }
+
+
     }
 }
 

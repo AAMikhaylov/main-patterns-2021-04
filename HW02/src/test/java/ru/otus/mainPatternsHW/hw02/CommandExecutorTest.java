@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -15,35 +16,36 @@ import static org.mockito.Mockito.*;
 public class CommandExecutorTest {
     private static BlockingQueue<Command> commandQueue;
     private static CommandExecutor commandExecutor;
+    private static IQueueThread queueThread;
 
     @BeforeEach
     public void beforeEach() {
         commandQueue = new LinkedBlockingQueue<>();
-        commandExecutor = mock(CommandExecutor.class, withSettings().useConstructor(commandQueue).defaultAnswer(CALLS_REAL_METHODS));
+        queueThread = mock(QueueProcessingThread.class, withSettings().useConstructor(commandQueue).defaultAnswer(CALLS_REAL_METHODS));
+        commandExecutor = mock(CommandExecutor.class, withSettings().useConstructor(queueThread, commandQueue).defaultAnswer(CALLS_REAL_METHODS));
     }
 
     @Test
     @DisplayName("После команды старт поток запущен")
-    public void startCommandTest() throws InterruptedException {
+    public void startCommandTest() {
         StartCommand startCommand = new StartCommand(commandExecutor);
-        synchronized (commandExecutor) {
-            startCommand.execute();
-            commandExecutor.wait(5000);
-        }
+        startCommand.execute();
         verify(commandExecutor, atLeast(1)).start();
-        assertTrue(commandExecutor.isRunning());
+        verify(queueThread, atLeast(1)).start();
+        assertTrue(("'" + Thread.State.RUNNABLE + "','" + Thread.State.TIMED_WAITING + "','" + Thread.State.WAITING + "'").contains("'" + queueThread.getState() + "'"));
     }
 
     @Test
     @DisplayName("После команды hard stop, поток завершается")
     public void hardStopCommandTest() throws InterruptedException {
         startCommandTest();
-        synchronized (commandExecutor) {
-            commandQueue.add(new StopHardCommand(commandExecutor));
-            commandExecutor.wait(5000);
-        }
+        commandQueue.add(new StopHardCommand(commandExecutor));
+        queueThread.join(5000);
         verify(commandExecutor, atLeast(1)).hardStop();
-        assertFalse(commandExecutor.isRunning());
+        verify(queueThread, atLeast(1)).stop();
+        assertEquals(queueThread.getState(), Thread.State.TERMINATED);
+
+
     }
 
     @Test
@@ -55,16 +57,32 @@ public class CommandExecutorTest {
         when(movableMock.getPosition()).thenReturn(new Vector(1, 1));
         when(movableMock.getVelocity()).thenReturn(new Vector(2, 2));
         int commandCount = 50;
-        synchronized (commandExecutor) {
-            for (int i = 0; i < commandCount; i++)
-                commandQueue.add(moveCommand);
-            commandQueue.add(new StopSoftCommand(commandExecutor));
-            for (int i = 0; i < commandCount; i++)
-                commandQueue.add(moveCommand);
-            commandExecutor.wait();
-        }
+        for (int i = 0; i < commandCount; i++)
+            commandQueue.add(moveCommand);
+        commandQueue.add(new StopSoftCommand(commandExecutor));
+        for (int i = 0; i < commandCount; i++)
+            commandQueue.add(moveCommand);
+        queueThread.join(5000);
         verify(commandExecutor, atLeast(1)).softStop();
+        verify(queueThread, atLeast(1)).stop();
         verify(movableMock, times(commandCount * 2)).setPosition(any());
-        assertFalse(commandExecutor.isRunning());
+        assertEquals(queueThread.getState(), Thread.State.TERMINATED);
+    }
+
+    @Test
+    @DisplayName("После исключения, поток обработки сообщений продолжает работу")
+    public void commmandExceptionTest() throws InterruptedException {
+        startCommandTest();
+        Movable movableMock = Mockito.mock(Movable.class);
+        MoveCommand moveCommand = new MoveCommand(movableMock);
+        when(movableMock.getPosition()).thenReturn(new Vector(1, 1));
+        when(movableMock.getVelocity()).thenReturn(new Vector(2, 2));
+        doThrow(new RuntimeException("Can't get position")).when(movableMock).setPosition(any());
+        commandQueue.add(moveCommand);
+        commandQueue.add(new StopSoftCommand(commandExecutor));
+        queueThread.join(5000);
+        verify(commandExecutor, atLeast(1)).softStop();
+        verify(queueThread, atLeast(1)).stop();
+        assertEquals(queueThread.getState(), Thread.State.TERMINATED);
     }
 }

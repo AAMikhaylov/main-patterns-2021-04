@@ -9,7 +9,12 @@ public class RotateCommand implements Command {
 
     @Override
     public void execute() {
-        rotable.setDirection((rotable.getDirection() + rotable.getAngularVelocity()) % rotable.getMaxDirections());
+        try {
+            rotable.setDirection((rotable.getDirection() + rotable.getAngularVelocity()) % rotable.getMaxDirections());
+        } catch (Exception E) {
+            throw new RuntimeException("Can't set new direction:\n" + E.getMessage());
+        }
+
     }
 
 

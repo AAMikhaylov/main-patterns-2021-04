@@ -6,6 +6,4 @@ public interface CommandExecutable {
     void softStop();
 
     void hardStop();
-
-    boolean isRunning();
 }
